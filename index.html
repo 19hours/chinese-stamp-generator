@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chinese Stamp Generator</title>
+<style>
+  :root {
+    --bg: #f4f1ec; --panel: #ffffff; --text: #1f1b18; --muted: #6b635c;
+    --line: #ddd6cd; --accent: #b3261e; --accent-text: #ffffff; --view: #e9e4dc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #171514; --panel: #211e1c; --text: #f0ebe5; --muted: #a39a91;
+      --line: #3a3531; --accent: #e0534a; --accent-text: #1a0806; --view: #100f0e;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: grid; grid-template-columns: 340px 1fr; min-height: 100vh;
+  }
+  aside {
+    background: var(--panel); border-right: 1px solid var(--line);
+    padding: 20px; overflow-y: auto; max-height: 100vh;
+  }
+  h1 { font-size: 19px; margin: 0 0 6px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 14px 0 5px; }
+  input[type=text], input[type=number], select {
+    width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg); color: var(--text); font: inherit;
+  }
+  #text { font-size: 26px; text-align: center; }
+  .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .unit { align-self: end; padding: 10px 2px; color: var(--muted); font-size: 13px; }
+  .seg { margin-top: 18px; display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg label { margin: 0; }
+  .seg input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg span { display: block; text-align: center; padding: 9px 6px; cursor: pointer; color: var(--text); }
+  .seg input:checked + span { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+  .seg input:focus-visible + span { outline: 2px solid var(--text); outline-offset: -2px; }
+  .check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 15px; margin-top: 16px; }
+  .check input { width: 18px; height: 18px; accent-color: var(--accent); }
+  button {
+    width: 100%; margin-top: 20px; padding: 12px; border: 0; border-radius: 8px;
+    background: var(--accent); color: var(--accent-text); font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button:disabled { opacity: .5; cursor: default; }
+  #status { margin-top: 12px; font-size: 13px; color: var(--muted); }
+  #status.err { color: var(--accent); }
+  main { position: relative; background: var(--view); min-height: 320px; }
+  canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  @media (max-width: 760px) {
+    body { grid-template-columns: 1fr; grid-template-rows: 46vh auto; }
+    main { order: -1; }
+    aside { border-right: 0; border-top: 1px solid var(--line); max-height: none; padding: 16px; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<aside>
+  <h1>Chinese Stamp Generator</h1>
+
+  <label for="text">Character</label>
+  <input id="text" type="text" value="美" maxlength="4" autocomplete="off">
+
+  <label for="font">Style</label>
+  <select id="font">
+    <option value="fonts/ackaisyo.ttf">英椎楷書 Eizui Kaisho</option>
+    <option value="https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/mashanzheng/MaShanZheng-Regular.ttf">Ma Shan Zheng</option>
+    <option value="https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/lxgwwenkaitc/LXGWWenKaiTC-Regular.ttf">LXGW WenKai</option>
+    <option value="upload">Upload font…</option>
+  </select>
+  <input id="fontFile" type="file" accept=".ttf,.otf,.woff" hidden>
+
+  <div class="row">
+    <div><label for="w">Width</label><input id="w" type="number" value="26" min="5" max="200" step="1"></div>
+    <div><label for="d">Depth</label><input id="d" type="number" value="26" min="5" max="200" step="1"></div>
+    <div><label for="h">Height</label><input id="h" type="number" value="10" min="2" max="100" step="0.5"></div>
+  </div>
+  <div class="row">
+    <div><label for="c">Relief</label><input id="c" type="number" value="5" min="0.4" max="50" step="0.5"></div>
+    <div><label for="m">Margin</label><input id="m" type="number" value="2" min="0" max="50" step="0.5"></div>
+    <div class="unit">mm</div>
+  </div>
+
+  <div class="seg" role="radiogroup" aria-label="Character direction">
+    <label><input type="radio" name="mode" value="raised" checked><span>Out</span></label>
+    <label><input type="radio" name="mode" value="engraved"><span>In</span></label>
+  </div>
+
+  <label class="check"><input id="mirror" type="checkbox" checked> Mirrored</label>
+
+  <button id="download" disabled>Download STL</button>
+  <div id="status"></div>
+</aside>
+<main>
+  <canvas id="view"></canvas>
+</main>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import opentype from 'https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.module.js';
+import polygonClipping from 'https://cdn.jsdelivr.net/npm/polygon-clipping@0.15.7/+esm';
+
+const OVERLAP = 0.1;        // mm the top layer sinks into the base so slicers fuse them
+const CURVE_STEPS = 10;     // segments per font curve
+
+const $ = id => document.getElementById(id);
+const statusEl = $('status');
+const setStatus = (msg, err = false) => { statusEl.textContent = msg; statusEl.classList.toggle('err', err); };
+
+/* ---------- fonts ---------- */
+const fontCache = new Map();
+let uploadedFont = null;
+
+async function getFont() {
+  const key = $('font').value;
+  if (key === 'upload') return uploadedFont;
+  if (!fontCache.has(key)) {
+    setStatus('Loading font…');
+    const res = await fetch(key);
+    if (!res.ok) throw new Error('Could not load the font.');
+    fontCache.set(key, opentype.parse(await res.arrayBuffer()));
+  }
+  return fontCache.get(key);
+}
+
+/* ---------- glyph → polygons ---------- */
+function glyphContours(font, ch) {
+  const glyph = font.charToGlyph(ch);
+  if (!glyph || glyph.index === 0) return null;
+  const cmds = glyph.getPath(0, 0, 1000).commands;
+  const contours = [];
+  let cur = null, px = 0, py = 0;
+  const close = () => { if (cur && cur.length > 2) contours.push(cur); cur = null; };
+  for (const c of cmds) {
+    if (c.type === 'M') { close(); cur = [[c.x, -c.y]]; }
+    else if (c.type === 'L') cur.push([c.x, -c.y]);
+    else if (c.type === 'Q') {
+      for (let i = 1; i <= CURVE_STEPS; i++) {
+        const t = i / CURVE_STEPS, u = 1 - t;
+        cur.push([u*u*px + 2*u*t*c.x1 + t*t*c.x, -(u*u*py + 2*u*t*c.y1 + t*t*c.y)]);
+      }
+    } else if (c.type === 'C') {
+      for (let i = 1; i <= CURVE_STEPS; i++) {
+        const t = i / CURVE_STEPS, u = 1 - t;
+        cur.push([u*u*u*px + 3*u*u*t*c.x1 + 3*u*t*t*c.x2 + t*t*t*c.x,
+                -(u*u*u*py + 3*u*u*t*c.y1 + 3*u*t*t*c.y2 + t*t*t*c.y)]);
+      }
+    } else if (c.type === 'Z') { close(); continue; }
+    px = c.x; py = c.y;
+  }
+  close();
+  return contours;
+}
+
+const signedArea = r => { let a = 0; for (let i = 0, n = r.length; i < n; i++) { const p = r[i], q = r[(i+1)%n]; a += p[0]*q[1] - q[0]*p[1]; } return a / 2; };
+
+// Contours → clean MultiPolygon. Fonts wind solid contours one way and holes the other.
+function glyphPolygons(contours) {
+  if (!contours.length) return [];
+  const areas = contours.map(signedArea);
+  let big = 0; areas.forEach((a, i) => { if (Math.abs(a) > Math.abs(areas[big])) big = i; });
+  const solidSign = Math.sign(areas[big]);
+  const solids = [], holes = [];
+  contours.forEach((r, i) => (Math.sign(areas[i]) === solidSign ? solids : holes).push([[r]]));
+  let mp = polygonClipping.union(...solids);
+  if (holes.length) mp = polygonClipping.difference(mp, ...holes);
+  return mp;
+}
+
+const bounds = mp => {
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const poly of mp) for (const [x, y] of poly[0]) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  return { x0, y0, x1, y1, w: x1 - x0, h: y1 - y0 };
+};
+const transform = (mp, fn) => mp.map(poly => poly.map(ring => ring.map(fn)));
+
+// Seal layout: columns read right-to-left, top-to-bottom.
+function cellsFor(n, W, D, margin) {
+  const cols = n > 2 ? 2 : 1, rows = n > 1 ? 2 : 1, gap = n > 1 ? Math.min(1, margin) : 0;
+  const cw = (W - 2*margin - gap*(cols-1)) / cols, ch = (D - 2*margin - gap*(rows-1)) / rows;
+  const cells = [];
+  for (let i = 0; i < n; i++) {
+    const col = cols - 1 - Math.floor(i / rows), row = i % rows;
+    cells.push({
+      cx: -W/2 + margin + cw/2 + col*(cw + gap),
+      cy:  D/2 - margin - ch/2 - row*(ch + gap), w: cw, h: ch });
+  }
+  return cells;
+}
+
+/* ---------- polygons → solid ---------- */
+function ringToPath(ring, PathClass) {
+  const pts = ring.slice(0, -1).map(([x, y]) => new THREE.Vector2(x, y)); // drop repeated closing point
+  return new PathClass(pts);
+}
+function extrude(mp, z0, depth) {
+  const shapes = mp.map(poly => {
+    const s = ringToPath(poly[0], THREE.Shape);
+    for (let i = 1; i < poly.length; i++) s.holes.push(ringToPath(poly[i], THREE.Path));
+    return s;
+  });
+  const g = new THREE.ExtrudeGeometry(shapes, { depth, bevelEnabled: false, curveSegments: 1 });
+  g.translate(0, 0, z0);
+  return g;
+}
+function merge(geos) {
+  const parts = geos.map(g => (g.index ? g.toNonIndexed() : g).getAttribute('position').array);
+  const out = new Float32Array(parts.reduce((n, a) => n + a.length, 0));
+  let o = 0; for (const a of parts) { out.set(a, o); o += a.length; }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(out, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+function buildStamp(font, p) {
+  const chars = [...p.text];
+  const cells = cellsFor(chars.length, p.w, p.d, p.margin);
+  let design = [];
+  chars.forEach((ch, i) => {
+    const contours = glyphContours(font, ch);
+    if (!contours) throw new Error(`"${ch}" is not in this font.`);
+    if (!contours.length) return;
+    const mp = glyphPolygons(contours), b = bounds(mp), cell = cells[i];
+    const s = Math.min(cell.w / b.w, cell.h / b.h);
+    const mx = (b.x0 + b.x1) / 2, my = (b.y0 + b.y1) / 2;
+    design.push(...transform(mp, ([x, y]) => [cell.cx + (x - mx) * s, cell.cy + (y - my) * s]));
+  });
+  if (!design.length) throw new Error('Nothing to draw for that text.');
+  if (chars.length > 1) design = polygonClipping.union(design);
+  if (p.mirror) design = transform(design, ([x, y]) => [-x, y]);
+
+  const baseH = p.h - p.relief;
+  const base = new THREE.BoxGeometry(p.w, p.d, baseH).translate(0, 0, baseH / 2);
+  let top;
+  if (p.mode === 'raised') {
+    top = extrude(design, baseH - OVERLAP, p.relief + OVERLAP);
+  } else {
+    const hw = p.w / 2, hd = p.d / 2;
+    const square = [[[[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd], [-hw, -hd]]]];
+    top = extrude(polygonClipping.difference(square, design), baseH - OVERLAP, p.relief + OVERLAP);
+  }
+  return merge([base, top]);
+}
+
+/* ---------- STL ---------- */
+function toSTL(geometry) {
+  const pos = geometry.getAttribute('position').array, tris = pos.length / 9;
+  const buf = new ArrayBuffer(84 + tris * 50), dv = new DataView(buf);
+  dv.setUint32(80, tris, true);
+  const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3(), n = new THREE.Vector3();
+  let o = 84;
+  for (let t = 0; t < tris; t++) {
+    a.fromArray(pos, t*9); b.fromArray(pos, t*9 + 3); c.fromArray(pos, t*9 + 6);
+    n.subVectors(c, b).cross(a.clone().sub(b)).normalize();
+    for (const v of [n, a, b, c]) { dv.setFloat32(o, v.x, true); dv.setFloat32(o+4, v.y, true); dv.setFloat32(o+8, v.z, true); o += 12; }
+    o += 2;
+  }
+  return buf;
+}
+
+/* ---------- viewer ---------- */
+const canvas = $('view');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(35, 1, 0.1, 5000);
+camera.up.set(0, 0, 1);
+camera.position.set(0, -55, 60);
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x554433, 1.6));
+const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(-40, -60, 90); scene.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.7); fill.position.set(60, 40, 30); scene.add(fill);
+const mesh = new THREE.Mesh(new THREE.BufferGeometry(),
+  new THREE.MeshStandardMaterial({ color: 0xb8322a, roughness: 0.6, metalness: 0.05, flatShading: true }));
+scene.add(mesh);
+
+function resize() {
+  const { clientWidth: w, clientHeight: h } = canvas.parentElement;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(canvas.parentElement);
+resize();
+renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+
+/* ---------- UI ---------- */
+function params() {
+  const num = (id, lo, hi) => Math.min(hi, Math.max(lo, parseFloat($(id).value) || lo));
+  const w = num('w', 5, 200), d = num('d', 5, 200), h = num('h', 2, 100);
+  return {
+    text: $('text').value.replace(/\s/g, ''),
+    w, d, h,
+    relief: Math.min(num('c', 0.4, 50), h - 1),          // always leave ≥ 1 mm of base
+    margin: Math.min(num('m', 0, 50), Math.min(w, d) / 2 - 1),
+    mode: document.querySelector('input[name=mode]:checked').value,
+    mirror: $('mirror').checked,
+  };
+}
+
+let current = null, lastSize = '';
+async function update() {
+  $('download').disabled = true;
+  try {
+    const p = params();
+    if (!p.text) { setStatus(''); return; }
+    const font = await getFont();
+    if (!font) { setStatus(''); return; }
+    const geo = buildStamp(font, p);
+    mesh.geometry.dispose(); mesh.geometry = geo;
+    const size = `${p.w}x${p.d}x${p.h}`;
+    if (size !== lastSize) {            // re-frame only when the block changes size
+      const r = Math.max(p.w, p.d, p.h);
+      controls.target.set(0, 0, p.h / 2);
+      camera.position.set(0, -r * 1.9, p.h / 2 + r * 2.1);
+      lastSize = size;
+    }
+    current = { geo, p };
+    $('download').disabled = false;
+    setStatus('');
+  } catch (e) {
+    console.error(e);
+    setStatus(e.message || String(e), true);
+  }
+}
+
+let timer;
+const schedule = () => { clearTimeout(timer); timer = setTimeout(update, 120); };
+for (const el of document.querySelectorAll('#text, #w, #d, #h, #c, #m, #mirror, input[name=mode]')) el.addEventListener('input', schedule);
+
+$('font').addEventListener('change', () => { if ($('font').value === 'upload') $('fontFile').click(); else schedule(); });
+$('fontFile').addEventListener('change', async e => {
+  const file = e.target.files[0]; if (!file) return;
+  try {
+    uploadedFont = opentype.parse(await file.arrayBuffer());
+    $('font').querySelector('[value=upload]').textContent = file.name;
+    update();
+  } catch { setStatus('Not a readable .ttf or .otf font.', true); }
+  e.target.value = '';
+});
+
+$('download').addEventListener('click', () => {
+  if (!current) return;
+  const { geo, p } = current;
+  const url = URL.createObjectURL(new Blob([toSTL(geo)], { type: 'model/stl' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = `stamp-${p.text}-${p.w}x${p.d}x${p.h}mm.stl`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+window.__stamp = { get current() { return current; }, toSTL };   // handy for debugging
+// The Eizui Kaisho file is not redistributable, so it is only offered where fonts/ackaisyo.ttf exists.
+const local = $('font').querySelector('[value^="fonts/"]');
+if (!(await fetch(local.value, { method: 'HEAD' }).then(r => r.ok).catch(() => false))) local.remove();
+update();
+</script>
+</body>
+</html>
