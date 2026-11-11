@@ -22,6 +22,4 @@ Any static host works, because the app is just this folder:
 
 ## Fonts
 
-Built-in styles are SIL Open Font License fonts loaded from the Google Fonts repository via jsDelivr. "Upload font…" uses any `.ttf` / `.otf` from your computer without uploading it anywhere.
-
-If a file exists at `fonts/ackaisyo.ttf`, the app also offers 英椎楷書 (Eizui Kaisho) by AC Works and makes it the default. That font is free to use but not redistributable, so it is not included in this repository; download it from Font AC and put it there for local use.
+The default style is 英椎楷書 (Eizui Kaisho) by AC Works, loaded from `fonts/ackaisyo.ttf`. The other built-in styles are SIL Open Font License fonts loaded from the Google Fonts repository via jsDelivr. "Upload font…" uses any `.ttf` / `.otf` from your computer without uploading it anywhere.
